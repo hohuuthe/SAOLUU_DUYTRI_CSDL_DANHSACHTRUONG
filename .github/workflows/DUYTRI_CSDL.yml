@@ -1,0 +1,87 @@
+name: Duy tri CSDL danh sach cac truong
+
+on:
+  schedule:
+    # Chạy tự động mỗi giờ một lần (vào phút thứ 0)
+    - cron: '0 * * * *'
+  workflow_dispatch: # Cho phép bạn bấm nút chạy thử thủ công trên GitHub
+
+jobs:
+  update-database:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Supabase Client
+        run: npm install @supabase/supabase-js
+
+      - name: Chay script cap nhat
+        run: |
+          cat << 'EOF' > update_script.js
+          const { createClient } = require('@supabase/supabase-js');
+
+          // Thông tin kết nối lấy từ ứng dụng của bạn
+          const supabaseUrl = 'https://fxsqpcqcxhmftvbyankg.supabase.co';
+          const supabaseKey = 'sb_publishable_XQ3-PklN9hfiPdt-BJemcQ_At6IBAcC';
+
+          const supabase = createClient(supabaseUrl, supabaseKey);
+
+          async function main() {
+            console.log('--- Bắt đầu tiến trình cập nhật CSDL ---');
+            try {
+              // 1. Kiểm tra sự tồn tại của bảng và dữ liệu
+              const { data, error: fetchError } = await supabase
+                .from('duytricsdl')
+                .select('*')
+                .limit(1);
+
+              if (fetchError) {
+                console.error('Lỗi khi truy vấn bảng duytricsdl:', fetchError.message);
+                console.log('Gợi ý: Hãy đảm bảo bạn đã tạo bảng "duytricsdl" trong Supabase SQL Editor.');
+                process.exit(1);
+              }
+
+              if (!data || data.length === 0) {
+                // 2. Nếu chưa có dòng nào, tạo mới dòng đầu tiên
+                console.log('Chưa có dữ liệu, đang tạo dòng mới...');
+                const { error: insertError } = await supabase
+                  .from('duytricsdl')
+                  .insert([{ so: 1 }]);
+                
+                if (insertError) {
+                  console.error('Lỗi khi chèn dữ liệu mới:', insertError.message);
+                  process.exit(1);
+                }
+                console.log('Đã tạo thành công dòng đầu tiên với so = 1');
+              } else {
+                // 3. Nếu đã có dữ liệu, tăng giá trị cột so lên 1
+                const record = data[0];
+                const currentSo = parseInt(record.so || 0);
+                const newSo = currentSo + 1;
+                
+                console.log(`Tìm thấy ID: ${record.id}, Giá trị hiện tại: ${currentSo}`);
+
+                const { error: updateError } = await supabase
+                  .from('duytricsdl')
+                  .update({ so: newSo })
+                  .eq('id', record.id);
+
+                if (updateError) {
+                  console.error('Lỗi khi cập nhật giá trị:', updateError.message);
+                  process.exit(1);
+                }
+                console.log(`Cập nhật thành công! Giá trị mới: ${newSo}`);
+              }
+            } catch (err) {
+              console.error('Lỗi hệ thống bất ngờ:', err.message);
+              process.exit(1);
+            }
+            console.log('--- Tiến trình hoàn tất ---');
+          }
+
+          main();
+          EOF
+          node update_script.js
